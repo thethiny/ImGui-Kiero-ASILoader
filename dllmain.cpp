@@ -13,6 +13,7 @@ void OnInitializeHook(HMODULE);
 std::vector<std::string> ASIs;
 
 typedef ImGuiContext* (__stdcall ASIPresent)(ImGuiContext* ctx);
+typedef ImGuiContext* (__fastcall ASIStyle)(ImGuiContext* ctx);
 
 extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -26,6 +27,7 @@ ID3D11RenderTargetView* mainRenderTargetView;
 struct ASIStruct {
 	std::string name;
 	ASIPresent* PresentFunction;
+	ASIStyle* StyleFunction;
 	bool bInit = false;
 };
 
@@ -105,7 +107,8 @@ HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 	if (ASI_count == 1)
 	{
 		ImGui::Begin(sASIStruct[0].name.c_str());
-		ImGui::SetCurrentContext(sASIStruct[0].PresentFunction(ImGui::GetCurrentContext())); // Draw me only
+		if (sASIStruct[0].bInit)
+			ImGui::SetCurrentContext(sASIStruct[0].PresentFunction(ImGui::GetCurrentContext())); // Draw me only if initialized
 	}
 	else if (ASI_count > 1)
 	{
@@ -119,18 +122,17 @@ HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 			ImGui::SameLine();
 
 			if (ImGui::Button(sASIStruct[i].name.c_str()))
+			{
 				sActiveASI = &sASIStruct[i];
-
-			
+				if (sASIStruct[i].StyleFunction)
+					ImGui::SetCurrentContext(sASIStruct[i].StyleFunction(ImGui::GetCurrentContext()));
+			}
 
 		}
 		ImGui::Separator();
 
-		for (int i = 0; i < ASIs.size(); i++)
-		{
-			if (sActiveASI == &sASIStruct[i])
-				ImGui::SetCurrentContext(sASIStruct[i].PresentFunction(ImGui::GetCurrentContext())); // Draw me if I'm active
-		}
+		if (sActiveASI)
+			ImGui::SetCurrentContext(sActiveASI->PresentFunction(ImGui::GetCurrentContext())); // Draw active
 	}
 	else
 	{
@@ -236,6 +238,8 @@ void OnInitializeHook(HMODULE hModule)
 		sASIStruct[ctr-1].PresentFunction = (ASIPresent*)GetProcAddress(hDLL, "SharedPresent");
 		if (sASIStruct[ctr-1].PresentFunction == 0)
 			continue;
+
+		sASIStruct[ctr - 1].StyleFunction = (ASIStyle*)GetProcAddress(hDLL, "SharedStyle");
 
 		sASIStruct[ctr-1].bInit = true;
 		std::cout << "Initializing " << *i << " Success!" << std::endl;
