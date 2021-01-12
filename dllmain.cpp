@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <vector>
 #include <chrono>
+#include <filesystem>
 #include "code/eSettingsManager.h"
 
 void CreateConsole();
@@ -31,7 +32,7 @@ struct ASIStruct {
 ASIStruct* sASIStruct;
 ASIStruct* sActiveASI = NULL;
 
-bool isActive = false;
+bool bIsGuiActive = false;
 
 void InitImGui()
 {
@@ -44,8 +45,12 @@ void InitImGui()
 
 LRESULT __stdcall WndProc(const HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
-	if (ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam))
+	if (bIsGuiActive)
+	{
+		ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
 		return true;
+	}
+	
 
 	return CallWindowProc(oWndProc, hWnd, uMsg, wParam, lParam);
 }
@@ -86,7 +91,7 @@ HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 			return oPresent(pSwapChain, SyncInterval, Flags);
 	}
 
-	if (!isActive)
+	if (!bIsGuiActive)
 		return oPresent(pSwapChain, SyncInterval, Flags);
 
 	ImGui_ImplDX11_NewFrame();
@@ -202,7 +207,7 @@ void main()
 	{
 		if (GetAsyncKeyState(VK_F1))
 		{
-			isActive = !isActive;
+			bIsGuiActive = !bIsGuiActive;
 			while (GetAsyncKeyState(VK_F1)); // Wait until Negative Edge
 		}
 	}
@@ -239,37 +244,77 @@ void OnInitializeHook(HMODULE hModule)
 	main();
 }
 
+std::string GetDirName()
+{
+	CHAR fileName[MAX_PATH + 1];
+	DWORD chars = GetModuleFileNameA(NULL, fileName, MAX_PATH + 1);
+	if (chars)
+	{
+		std::string basename;
+		std::string filename = std::string(fileName);
+		size_t pos = filename.find_last_of('\\');
+		if (pos != -1)
+		{
+			basename = filename.substr(0, pos);
+			return basename;
+		}
+		return filename;
+	}
+	return "";
+}
+
+std::string toLower(std::string s)
+{
+	std::string new_string("");
+	for (int i = 0; i < s.length(); i++)
+	{
+		new_string += std::tolower(s[i]);
+	}
+	return new_string;
+}
+
+inline bool FolderCompare(std::string FullPath, std::string Basename)
+{
+	return (FullPath.substr(FullPath.length() - Basename.length(), Basename.length()) == Basename);
+}
+
 std::vector<std::string> FindASIs(HMODULE hDllModule)
 {
-	WIN32_FIND_DATA w32Data;
-	std::vector<std::string> ASIs;
-	HANDLE hFind = FindFirstFile("*.asi", &w32Data);
-	if (hFind == INVALID_HANDLE_VALUE)
-	{
-		FindClose(hFind);
-		return ASIs;
-	}
-
-
+	std::vector<std::string> vFoundASI;
 	char lpAsiName[MAX_PATH];
 	DWORD chars = GetModuleFileName(hDllModule, lpAsiName, MAX_PATH + 1);
 	std::string szAsiName(lpAsiName);
+
 	if (chars)
 	{
-		std::cout << "Dll: " << lpAsiName << std::endl;
+		std::cout << "ImGuiPresent::MyFile = " << lpAsiName << std::endl;
 	}
 
-	do {
-		std::string szFileName(w32Data.cFileName);
-		if (szAsiName.substr(szAsiName.length() - szFileName.length(), szFileName.length()) != szFileName) // Avoid Myself
+	std::string dirName = GetDirName();
+	std::cout << "ImGuiPresent::Search Dir = " << dirName << std::endl;
+	for (const auto& file : std::filesystem::directory_iterator(dirName.c_str()))
+	{
+
+		if (file.is_directory())
+			continue;
+		if (file.path().has_extension())
 		{
-			ASIs.push_back(szFileName);
+			if (toLower(file.path().extension().string()) == ".asi")
+			{
+				std::string szFileName = file.path().filename().string();
+				if (!FolderCompare(szAsiName, szFileName)) // Avoid Myself
+				{
+					//MessageBoxA(0, file.path().string().c_str(), "Loading ASI", 0);
+					std::cout << "ImGuiPresent::Found ASI " << szFileName << std::endl;
+					vFoundASI.push_back(szFileName);
+				}
+					
+			}
+				
 		}
+	}
 
-	} while (FindNextFile(hFind, &w32Data));
-
-	FindClose(hFind);
-	return ASIs;
+	return vFoundASI;
 }
 
 bool APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpRes)
