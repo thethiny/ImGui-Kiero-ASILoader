@@ -27,8 +27,13 @@ To use other backends, you should utilize other Kiero hooks (such as DX9 Kiero H
 
 ## Credits
 [Kiero](https://github.com/Rebzzel/kiero) - Enabling ImGui in D3D Apps by hooking
+
 [Kiero DX11 Hook](https://github.com/rdbo/ImGui-DirectX-11-Kiero-Hook) - DX11 Implementation
+
 [Dear ImGui](https://github.com/ocornut/imgui) - D3D Gui
+
 [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) - ASI Loader
+
 [MKXHook](https://github.com/ermaccer/MKXHook) - ASI Implementation
+
 
