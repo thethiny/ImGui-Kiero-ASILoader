@@ -209,8 +209,23 @@ void main()
 	{
 		if (GetAsyncKeyState(VK_F1))
 		{
-			bIsGuiActive = !bIsGuiActive;
-			while (GetAsyncKeyState(VK_F1)); // Wait until Negative Edge
+			if (bIsGuiActive)
+			{
+				while (GetAsyncKeyState(VK_F1)); // Wait until Negative Edge to avoid Pressing by accident
+				bIsGuiActive = !bIsGuiActive;
+			}
+			else
+			{
+				bIsGuiActive = !bIsGuiActive;
+				while (GetAsyncKeyState(VK_F1)); // Wait until Negative Edge to avoid wait
+			}
+			
+			
+		}
+		if (GetAsyncKeyState(VK_ESCAPE))
+		{
+			while (GetAsyncKeyState(VK_ESCAPE)); // Wait until Negative Edge to avoid Pressing Back
+			bIsGuiActive = false;
 		}
 	}
 }
