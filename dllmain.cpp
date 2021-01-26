@@ -6,6 +6,8 @@
 #include <filesystem>
 #include "code/eSettingsManager.h"
 
+char* sMenuTitle = "MK11 Hooks";
+
 void CreateConsole();
 std::vector<std::string> FindASIs(HMODULE hDllModule);
 void OnInitializeHook(HMODULE);
@@ -14,6 +16,7 @@ std::vector<std::string> ASIs;
 
 typedef ImGuiContext* (__stdcall ASIPresent)(ImGuiContext* ctx);
 typedef ImGuiContext* (__fastcall ASIStyle)(ImGuiContext* ctx);
+typedef void* (__fastcall ASIInit)();
 
 extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -28,6 +31,7 @@ struct ASIStruct {
 	std::string name;
 	ASIPresent* PresentFunction;
 	ASIStyle* StyleFunction;
+	ASIInit* InitFunction;
 	bool bInit = false;
 };
 
@@ -45,15 +49,36 @@ void InitImGui()
 	ImGui_ImplDX11_Init(pDevice, pContext);
 }
 
-LRESULT __stdcall WndProc(const HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+LRESULT __stdcall WndProc(const HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	if (uMsg == WM_CLOSE || uMsg == WM_ENDSESSION || uMsg == WM_QUERYENDSESSION) // If Any Sort of shutdown occurs, handle it to the game so that it properly shuts down.
+	{
+		return CallWindowProc(oWndProc, hWnd, uMsg, wParam, lParam);
+	}
+
+	if (uMsg == WM_KEYDOWN)
+	{
+		switch (wParam)
+		{
+		case VK_F1:
+			bIsGuiActive = !bIsGuiActive;
+			return true;
+		case VK_ESCAPE:
+			if (bIsGuiActive)
+			{
+				bIsGuiActive = false;
+				return true;
+			}
+			break;
+		}
+	}
 
 	if (bIsGuiActive)
 	{
 		ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
-		return true;
+		return DefWindowProc(hWnd, uMsg, wParam, lParam); // Handle Default Events
 	}
 	
-
 	return CallWindowProc(oWndProc, hWnd, uMsg, wParam, lParam);
 }
 
@@ -70,17 +95,6 @@ HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 			DXGI_SWAP_CHAIN_DESC sd;
 			pSwapChain->GetDesc(&sd);
 			window = sd.OutputWindow;
-
-			// Set Windows
-			/*for (int i = 0; i < ASIs.size(); i++)
-			{
-				if (!sASIStruct[i].bInit)
-					continue;
-
-				sASIStruct[i].SetGlobWindowFunction(window);
-			}*/
-			// End Set Windows
-
 			ID3D11Texture2D* pBackBuffer;
 			pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer);
 			pDevice->CreateRenderTargetView(pBackBuffer, NULL, &mainRenderTargetView);
@@ -112,7 +126,7 @@ HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 	}
 	else if (ASI_count > 1)
 	{
-		ImGui::Begin("All in One ImGui");
+		ImGui::Begin(sMenuTitle);
 		ImGui::Text("Hooks:");
 		for (int i = 0; i < ASIs.size(); i++)
 		{
@@ -203,32 +217,32 @@ void CreateConsole()
 	SetConsoleTitleA(consoleName.c_str());
 }
 
-void main()
-{
-	while (1)
-	{
-		if (GetAsyncKeyState(VK_F1))
-		{
-			if (bIsGuiActive)
-			{
-				while (GetAsyncKeyState(VK_F1)); // Wait until Negative Edge to avoid Pressing by accident
-				bIsGuiActive = !bIsGuiActive;
-			}
-			else
-			{
-				bIsGuiActive = !bIsGuiActive;
-				while (GetAsyncKeyState(VK_F1)); // Wait until Negative Edge to avoid wait
-			}
-			
-			
-		}
-		if (GetAsyncKeyState(VK_ESCAPE))
-		{
-			while (GetAsyncKeyState(VK_ESCAPE)); // Wait until Negative Edge to avoid Pressing Back
-			bIsGuiActive = false;
-		}
-	}
-}
+//void main()
+//{
+//	while (1)
+//	{
+//		if (GetAsyncKeyState(VK_F1))
+//		{
+//			if (bIsGuiActive)
+//			{
+//				while (GetAsyncKeyState(VK_F1)); // Wait until Negative Edge to avoid Pressing by accident
+//				bIsGuiActive = !bIsGuiActive;
+//			}
+//			else
+//			{
+//				bIsGuiActive = !bIsGuiActive;
+//				while (GetAsyncKeyState(VK_F1)); // Wait until Negative Edge to avoid wait
+//			}
+//			
+//			
+//		}
+//		if (GetAsyncKeyState(VK_ESCAPE))
+//		{
+//			while (GetAsyncKeyState(VK_ESCAPE)); // Wait until Negative Edge to avoid Pressing Back
+//			bIsGuiActive = false;
+//		}
+//	}
+//}
 
 void OnInitializeHook(HMODULE hModule)
 {
@@ -249,18 +263,28 @@ void OnInitializeHook(HMODULE hModule)
 		if (hDLL == NULL)
 			continue;
 
+		// Send a message to ASI that there's a loader
+		sASIStruct[ctr - 1].InitFunction = (ASIInit*)GetProcAddress(hDLL, "InitShared");
+		if (sASIStruct[ctr - 1].InitFunction == 0)
+			continue;
+		sASIStruct[ctr - 1].InitFunction();
+		std::cout << "Initialize::" << sASIStruct[ctr - 1].name << "::InitShared" << std::endl;
 
+		// The Draw Function of the ASI
 		sASIStruct[ctr-1].PresentFunction = (ASIPresent*)GetProcAddress(hDLL, "SharedPresent");
 		if (sASIStruct[ctr-1].PresentFunction == 0)
 			continue;
+		std::cout << "Initialize::" << sASIStruct[ctr - 1].name << "::SharedPresent" << std::endl;
 
+		// The Styling function of the ASI in case there's one
 		sASIStruct[ctr - 1].StyleFunction = (ASIStyle*)GetProcAddress(hDLL, "SharedStyle");
+		std::cout << "Initialize::" << sASIStruct[ctr - 1].name << "::SharedStyle" << std::endl;
 
 		sASIStruct[ctr-1].bInit = true;
 		std::cout << "Initializing " << *i << " Success!" << std::endl;
 	}
 
-	main();
+	//main();
 }
 
 std::string GetDirName()
@@ -323,7 +347,6 @@ std::vector<std::string> FindASIs(HMODULE hDllModule)
 				std::string szFileName = file.path().filename().string();
 				if (!FolderCompare(szAsiName, szFileName)) // Avoid Myself
 				{
-					//MessageBoxA(0, file.path().string().c_str(), "Loading ASI", 0);
 					std::cout << "ImGuiPresent::Found ASI " << szFileName << std::endl;
 					vFoundASI.push_back(szFileName);
 				}
